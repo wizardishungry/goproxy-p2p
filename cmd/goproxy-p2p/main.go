@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"os"
 	"os/signal"
 	"syscall"
@@ -18,8 +19,11 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, os.Kill, syscall.SIGTERM)
 	defer cancel()
 
+	port := flag.Int("port", 8080, "listen on localhost port")
+	flag.Parse()
+
 	i := service.Instance{
-		LocalPort: 8080,
+		LocalPort: *port,
 	}
 
 	if err := i.Start(ctx); err != nil {

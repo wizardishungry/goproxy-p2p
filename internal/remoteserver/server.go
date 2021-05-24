@@ -3,8 +3,7 @@ package remoteserver
 import (
 	"bytes"
 	"context"
-	"fmt"
-	stdlog "log"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/goproxy/goproxy"
 	"github.com/rs/zerolog/log"
+	"jonwillia.ms/goproxy-p2p/internal/util"
 )
 
 func runCmd(name string, arg ...string) (string, error) {
@@ -27,8 +27,13 @@ func runCmd(name string, arg ...string) (string, error) {
 }
 
 // ListenAndServe returns a server that serves from the gomodcache for lan clients
-// TODO add auth
 func ListenAndServe(ctx context.Context) (*net.TCPAddr, error) {
+
+	dir, err := os.MkdirTemp("", "goproxy-p2p-*")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(dir)
 
 	goBinEnv := map[string]string{}
 	for _, env := range os.Environ() {
@@ -39,7 +44,9 @@ func ListenAndServe(ctx context.Context) (*net.TCPAddr, error) {
 		goBinEnv[parts[0]] = parts[1]
 	}
 
-	goBinEnv["GOPROXY"] = "off" // Do not fetch
+	// goBinEnv["GOPROXY"] = "direct" // Do not fetch?
+	// goBinEnv["GOVCS"] = "*:off"
+	// goBinEnv["SSH_AUTH_SOCK"] = `/dev/null`
 
 	newBinEnv := make([]string, 0, len(goBinEnv))
 	for k, v := range goBinEnv {
@@ -50,16 +57,16 @@ func ListenAndServe(ctx context.Context) (*net.TCPAddr, error) {
 
 	gomodcache, err := runCmd("go", "env", "GOMODCACHE")
 	if err != nil {
-		return nil, fmt.Errorf("couldn't figure out GOMODCACHE: %w", err)
+		return nil, err
 	}
-	log.Info().Str("gomodcache", gomodcache).Msg("Found cache")
-
-	stdLogger := stdlog.New(log.Logger, "remoteserver", 0)
+	dir = gomodcache + "/cache/download"
+	log.Debug().Str("path", dir).Msg("path to cache")
 
 	p := &goproxy.Goproxy{
-		Cacher:      goproxy.DirCacher(gomodcache),
-		GoBinEnv:    newBinEnv,
-		ErrorLogger: stdLogger,
+		GoBinEnv: newBinEnv,
+		// Cacher: goproxy.DirCacher(dir),
+		Cacher:      &cacherLogger{goproxy.DirCacher(dir)},
+		ErrorLogger: util.Logger(log.Logger, "remoteserver"),
 	}
 
 	server := http.Server{
@@ -81,3 +88,22 @@ func ListenAndServe(ctx context.Context) (*net.TCPAddr, error) {
 	addr.Port = l.Addr().(*net.TCPAddr).Port
 	return addr, nil
 }
+
+type cacherLogger struct {
+	cacher goproxy.Cacher
+}
+
+func (cl *cacherLogger) Get(ctx context.Context, name string) (io.ReadCloser, error) {
+	rc, err := cl.cacher.Get(ctx, name)
+	log.Trace().Err(err).Str("name", name).Msg("Get")
+
+	return rc, err
+}
+
+func (cl *cacherLogger) Set(ctx context.Context, name string, content io.ReadSeeker) error {
+	err := cl.cacher.Set(ctx, name, content)
+	log.Trace().Err(err).Str("name", name).Msg("Set")
+	return err
+}
+
+var _ goproxy.Cacher = &cacherLogger{}

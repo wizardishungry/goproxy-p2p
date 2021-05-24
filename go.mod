@@ -3,6 +3,7 @@ module jonwillia.ms/goproxy-p2p
 go 1.16
 
 require (
+	github.com/google/uuid v1.2.0 // indirect
 	github.com/goproxy/goproxy v0.6.2
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/miekg/dns v1.1.42 // indirect

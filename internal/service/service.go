@@ -33,7 +33,7 @@ func (i *Instance) Start(ctx context.Context) (err error) {
 	px := proxied.New()
 
 	// this is an agent for the local user
-	localAddr, err := localserver.ListenAndServe(ctx, px.Updates())
+	localAddr, err := localserver.ListenAndServe(ctx, i.LocalPort, px.Updates())
 	if err != nil {
 		return fmt.Errorf("localserver.ListenAndServe: %w", err)
 	}

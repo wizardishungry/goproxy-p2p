@@ -2,6 +2,7 @@ package proxied
 
 import (
 	"context"
+	"crypto/subtle"
 	"fmt"
 	"net"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"net/url"
 	"sync"
 
+	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/crypto/ssh"
 )
@@ -38,18 +40,44 @@ func (p *Proxied) CallbackAdd() func(ctx context.Context, sshClient *ssh.Client)
 		rp.Transport = &http.Transport{
 			Dial: sshClient.Dial,
 		}
+
 		listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
 		if err != nil {
 			log.Error().Err(err).Msg("can't listen")
 			return
 		}
-		u := fmt.Sprintf("http://127.0.0.1:%d/", listener.Addr().(*net.TCPAddr).Port)
+
+		user := uuid.New().String()
+		pass := uuid.New().String()
+		u := url.URL{
+			Scheme: "http",
+			Host:   fmt.Sprintf("127.0.0.1:%d", listener.Addr().(*net.TCPAddr).Port),
+			User:   url.UserPassword(user, pass),
+		}
+		urlStr := u.String()
+
+		wrapped := func(resp http.ResponseWriter, r *http.Request) { //  wrap with basic auth
+			u, p, ok := r.BasicAuth()
+			if ok &&
+				subtle.ConstantTimeCompare([]byte(u), []byte(user)) == 1 &&
+				subtle.ConstantTimeCompare([]byte(p), []byte(pass)) == 1 {
+				log.Trace().Msg("successful auth")
+				rp.ServeHTTP(resp, r)
+				return
+			}
+			resp.WriteHeader(http.StatusUnauthorized)
+		}
+		mux := http.NewServeMux()
+		mux.HandleFunc("/", wrapped)
+		go func() { http.Serve(listener, mux) }()
+
 		rk := sshClient.RemoteAddr().String()
-		go func() { http.Serve(listener, rp) }()
+
 		p.Mutex.Lock()
 		defer p.Mutex.Unlock()
+
 		p.stop(sshClient)
-		p.goproxies[rk] = u
+		p.goproxies[rk] = urlStr
 		p.proxies[sshClient] = listener
 		log.Info().Int("numProxies", len(p.goproxies)).Msg("updating proxies")
 		p.updates <- p.goproxies

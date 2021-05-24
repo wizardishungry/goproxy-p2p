@@ -10,10 +10,11 @@ import (
 
 	"github.com/goproxy/goproxy"
 	"github.com/rs/zerolog/log"
+	"jonwillia.ms/goproxy-p2p/internal/util"
 )
 
 // ListenAndServe returns a server that serves from the remoteServers
-func ListenAndServe(ctx context.Context, remoteServers <-chan map[string]string) (*net.TCPAddr, error) {
+func ListenAndServe(ctx context.Context, port int, remoteServers <-chan map[string]string) (*net.TCPAddr, error) {
 	e := &ephemeral{}
 	e.setProxies(map[string]string{})
 
@@ -22,7 +23,7 @@ func ListenAndServe(ctx context.Context, remoteServers <-chan map[string]string)
 	}
 	addr := &net.TCPAddr{
 		IP:   net.ParseIP("127.0.0.1"),
-		Port: 8080, // TODO alloc from command-line options
+		Port: port, // TODO alloc from command-line options
 	}
 	l, err := net.ListenTCP("tcp", addr)
 	if err != nil {
@@ -57,7 +58,7 @@ type ephemeral struct {
 var _ http.Handler = &ephemeral{}
 
 func (e *ephemeral) setProxies(proxies map[string]string) {
-	p := &goproxy.Goproxy{}
+
 	goBinEnv := map[string]string{}
 	for _, env := range os.Environ() {
 		parts := strings.SplitN(env, "=", 2)
@@ -71,7 +72,7 @@ func (e *ephemeral) setProxies(proxies map[string]string) {
 
 	for _, proxy := range proxies {
 		if gp != "" {
-			gp += ","
+			gp += "|"
 		}
 		gp += proxy
 	}
@@ -80,13 +81,19 @@ func (e *ephemeral) setProxies(proxies map[string]string) {
 		gp = "off"
 	}
 	goBinEnv["GOPROXY"] = gp
-	log.Info().Str("GOPROXY", gp).Msg("new GOPROXY")
+	log.Info().Str("GOPROXY", gp).Msg("new GOPROXY for localserver")
 
 	newBinEnv := make([]string, 0, len(goBinEnv))
 	for k, v := range goBinEnv {
 		newBinEnv = append(newBinEnv,
 			k+"="+v,
 		)
+	}
+
+	p := &goproxy.Goproxy{
+		ErrorLogger: util.Logger(log.Logger, "localserver"),
+		GoBinEnv:    newBinEnv,
+		// TODO do a multi cacher here instead of a proxy hierarchy
 	}
 
 	e.mutex.Lock()
@@ -102,5 +109,6 @@ func (e *ephemeral) getProxy() *goproxy.Goproxy {
 
 func (e *ephemeral) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 	p := e.getProxy()
+	log.Trace().Msg("serve http")
 	p.ServeHTTP(resp, req)
 }
