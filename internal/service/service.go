@@ -3,15 +3,13 @@ package service
 import (
 	"context"
 	"fmt"
-	"io"
-	"net"
-	"sync"
 
 	"github.com/rs/zerolog/log"
 	"golang.org/x/crypto/ssh"
 	"jonwillia.ms/goproxy-p2p/internal/localserver"
+	"jonwillia.ms/goproxy-p2p/internal/proto"
 	"jonwillia.ms/goproxy-p2p/internal/proxied"
-	"jonwillia.ms/goproxy-p2p/internal/remoteserver"
+	"jonwillia.ms/goproxy-p2p/internal/util"
 	"jonwillia.ms/weyoun"
 	"jonwillia.ms/weyoun/pkg/handlers"
 )
@@ -40,31 +38,19 @@ func (i *Instance) Start(ctx context.Context) (err error) {
 	log.Info().Msgf("local server %v", localAddr)
 
 	i.LocalPort = localAddr.Port // in case we pass 0
-
-	remoteAddr, err := remoteserver.ListenAndServe(ctx)
-	if err != nil {
-		return fmt.Errorf("remoteserver.ListenAndServe: %w", err)
-	}
-	log.Info().Msgf("remote server %v", remoteAddr)
-
-	ws := weyoun.NewServer(serviceName, func(ctx context.Context, channel ssh.Channel, msg handlers.ChannelOpenDirectMsg) {
-		conn, err := net.Dial("tcp", remoteAddr.String())
-		if err != nil {
-			fmt.Println("dial error", err)
-			return
-		}
-		defer conn.Close()
-		var wg sync.WaitGroup
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			io.Copy(channel, conn)
-		}()
-		go func() {
-			defer wg.Done()
-			io.Copy(conn, channel)
-		}()
-		wg.Wait()
+	myCacher := util.Gomodcacher()
+	ws := weyoun.NewServer(serviceName, handlers.Handlers{
+		FreeForm: map[string]func(ctx context.Context, channel ssh.Channel, extra []byte){
+			"cacher": func(ctx context.Context, channel ssh.Channel, extra []byte) { // TODO const
+				s, err := proto.NewServer(ctx, myCacher)
+				if err != nil {
+					log.Error().Err(err).Msg("proto.NewServer")
+					return
+				}
+				log.Info().Msg("Serving connection")
+				s.ServeConn(channel)
+			},
+		},
 	})
 
 	err = ws.Run(ctx)

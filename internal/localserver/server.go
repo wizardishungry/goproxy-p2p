@@ -2,10 +2,9 @@ package localserver
 
 import (
 	"context"
+	"io"
 	"net"
 	"net/http"
-	"os"
-	"strings"
 	"sync"
 
 	"github.com/goproxy/goproxy"
@@ -14,9 +13,9 @@ import (
 )
 
 // ListenAndServe returns a server that serves from the remoteServers
-func ListenAndServe(ctx context.Context, port int, remoteServers <-chan map[string]string) (*net.TCPAddr, error) {
+func ListenAndServe(ctx context.Context, port int, remoteServers <-chan []goproxy.Cacher) (*net.TCPAddr, error) {
 	e := &ephemeral{}
-	e.setProxies(map[string]string{})
+	e.setRemotes(nil)
 
 	server := http.Server{
 		Handler: e,
@@ -39,7 +38,7 @@ func ListenAndServe(ctx context.Context, port int, remoteServers <-chan map[stri
 			select {
 			case newProxies := <-remoteServers:
 				log.Info().Int("numProxies", len(newProxies)).Msg("receiving proxy list")
-				e.setProxies(newProxies)
+				e.setRemotes(newProxies)
 				log.Trace().Int("numProxies", len(newProxies)).Msg("received proxy list")
 
 			case <-ctx.Done():
@@ -57,43 +56,36 @@ type ephemeral struct {
 
 var _ http.Handler = &ephemeral{}
 
-func (e *ephemeral) setProxies(proxies map[string]string) {
+func (e *ephemeral) setRemotes(cachers []goproxy.Cacher) {
+	log.Trace().Int("len", len(cachers)).Msg("setRemotes")
+	// goBinEnv := map[string]string{}
+	// for _, env := range os.Environ() {
+	// 	parts := strings.SplitN(env, "=", 2)
+	// 	if len(parts) != 2 {
+	// 		continue
+	// 	}
+	// 	goBinEnv[parts[0]] = parts[1]
+	// }
 
-	goBinEnv := map[string]string{}
-	for _, env := range os.Environ() {
-		parts := strings.SplitN(env, "=", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		goBinEnv[parts[0]] = parts[1]
-	}
+	// // goBinEnv["GOPROXY"] = "direct" // Do not fetch?
+	// // goBinEnv["GOVCS"] = "*:off"
+	// // goBinEnv["SSH_AUTH_SOCK"] = `/dev/null`
 
-	gp := ""
+	// newBinEnv := make([]string, 0, len(goBinEnv))
+	// for k, v := range goBinEnv {
+	// 	newBinEnv = append(newBinEnv,
+	// 		k+"="+v,
+	// 	)
+	// }
+	myCacher := util.Gomodcacher()
 
-	for _, proxy := range proxies {
-		if gp != "" {
-			gp += "|"
-		}
-		gp += proxy
-	}
-
-	if gp == "" {
-		gp = "off"
-	}
-	goBinEnv["GOPROXY"] = gp
-	log.Info().Str("GOPROXY", gp).Msg("new GOPROXY for localserver")
-
-	newBinEnv := make([]string, 0, len(goBinEnv))
-	for k, v := range goBinEnv {
-		newBinEnv = append(newBinEnv,
-			k+"="+v,
-		)
-	}
+	multiCacher := newMulticacher()
+	multiCacher.Add(myCacher) // try me first
+	multiCacher.Add(cachers...)
 
 	p := &goproxy.Goproxy{
-		ErrorLogger: util.Logger(log.Logger, "localserver"),
-		GoBinEnv:    newBinEnv,
-		// TODO do a multi cacher here instead of a proxy hierarchy
+		// GoBinEnv: newBinEnv,
+		Cacher: &cacherLogger{multiCacher},
 	}
 
 	e.mutex.Lock()
@@ -108,7 +100,27 @@ func (e *ephemeral) getProxy() *goproxy.Goproxy {
 }
 
 func (e *ephemeral) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
+	// TODO add auth so other local users can't hit your proxy
 	p := e.getProxy()
 	log.Trace().Msg("serve http")
 	p.ServeHTTP(resp, req)
 }
+
+type cacherLogger struct {
+	cacher goproxy.Cacher
+}
+
+func (cl *cacherLogger) Get(ctx context.Context, name string) (io.ReadCloser, error) {
+	rc, err := cl.cacher.Get(ctx, name)
+	log.Trace().Err(err).Str("name", name).Bool("found", rc != nil).Msg("Get")
+
+	return rc, err
+}
+
+func (cl *cacherLogger) Set(ctx context.Context, name string, content io.ReadSeeker) error {
+	err := cl.cacher.Set(ctx, name, content)
+	log.Trace().Err(err).Str("name", name).Msg("Set")
+	return err
+}
+
+var _ goproxy.Cacher = &cacherLogger{}

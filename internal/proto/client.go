@@ -1,0 +1,88 @@
+package proto
+
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"io"
+	"net/rpc"
+	"time"
+
+	"github.com/goproxy/goproxy"
+)
+
+const apiBase = "Cacher"
+
+var APIBase = apiBase
+
+func New(conn io.ReadWriteCloser) interface {
+	goproxy.Cacher
+	Close() error
+} {
+	rpcClient := rpc.NewClient(conn)
+	return &remoter{rpcClient}
+}
+
+// Get gets the matched cache for the name. It returns the
+// `os.ErrNotExist` if not found.
+//
+// It is the caller's responsibility to close the returned
+// `io.ReadCloser`.
+//
+// Note that the returned `io.ReadCloser` can optionally implement the
+// following interfaces:
+//   * `io.Seeker`
+//       For the Range request header.
+//   * `interface{ ModTime() time.Time }`
+//       For the Last-Modified response header.
+//   * `interface{ Checksum() []byte }`
+//       For the ETag response header.
+
+type remoter struct{ *rpc.Client }
+
+var _ goproxy.Cacher = &remoter{}
+
+func (r *remoter) Get(ctx context.Context, name string) (io.ReadCloser, error) {
+	const svcMethod = "Get"
+	resp := &RemoteResponse{}
+
+	var done chan *rpc.Call
+	call := r.Client.Go(apiBase+"."+svcMethod, RemoteRequest{name}, resp, done)
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-done:
+	}
+
+	if err := call.Error; err != nil {
+		return nil, err
+	}
+
+	return &remoterReturn{
+		ReadCloser: io.NopCloser(bytes.NewBuffer(resp.Body)), // TODO on found defer pushing bytes by binding rpc to response object
+	}, nil
+}
+
+// Set sets the content as a cache with the name.
+func (r *remoter) Set(ctx context.Context, name string, content io.ReadSeeker) error {
+	return fmt.Errorf("unimplemented")
+}
+
+type RemoteRequest struct {
+	Name string
+}
+type RemoteResponse struct {
+	ModTime time.Time
+	Body    []byte
+}
+type remoterReturn struct {
+	r RemoteResponse
+	io.ReadCloser
+}
+
+var _ interface {
+	io.ReadCloser
+	// ModTime() time.Time
+	// Checksum() []byte
+} = &remoterReturn{}
