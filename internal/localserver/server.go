@@ -58,25 +58,7 @@ var _ http.Handler = &ephemeral{}
 
 func (e *ephemeral) setRemotes(cachers []goproxy.Cacher) {
 	log.Trace().Int("len", len(cachers)).Msg("setRemotes")
-	// goBinEnv := map[string]string{}
-	// for _, env := range os.Environ() {
-	// 	parts := strings.SplitN(env, "=", 2)
-	// 	if len(parts) != 2 {
-	// 		continue
-	// 	}
-	// 	goBinEnv[parts[0]] = parts[1]
-	// }
 
-	// // goBinEnv["GOPROXY"] = "direct" // Do not fetch?
-	// // goBinEnv["GOVCS"] = "*:off"
-	// // goBinEnv["SSH_AUTH_SOCK"] = `/dev/null`
-
-	// newBinEnv := make([]string, 0, len(goBinEnv))
-	// for k, v := range goBinEnv {
-	// 	newBinEnv = append(newBinEnv,
-	// 		k+"="+v,
-	// 	)
-	// }
 	myCacher := util.Gomodcacher()
 
 	multiCacher := newMulticacher()
@@ -102,7 +84,7 @@ func (e *ephemeral) getProxy() *goproxy.Goproxy {
 func (e *ephemeral) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 	// TODO add auth so other local users can't hit your proxy
 	p := e.getProxy()
-	log.Trace().Msg("serve http")
+	log.Trace().Bool("resp", resp == nil).Msg("serve http")
 	p.ServeHTTP(resp, req)
 }
 

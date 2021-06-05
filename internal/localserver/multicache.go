@@ -36,9 +36,10 @@ func (m *multicacher) Get(ctx context.Context, name string) (io.ReadCloser, erro
 		result    io.ReadCloser
 		resultErr error
 	)
-	for iI, cI := range m.cachers {
+	for iI, cI := range m.cachers[1:] {
 		i, c := iI, cI // capture
 		g.Go(func() error {
+			log.Trace().Int("number", i).Msg("multicacher req")
 			rc, err := c.Get(ctx, name)
 			if err != nil || rc == nil {
 				log.Debug().Int("number", i).Err(err).Msg("multicacher miss")
@@ -52,28 +53,27 @@ func (m *multicacher) Get(ctx context.Context, name string) (io.ReadCloser, erro
 			}
 			mutex.Lock()
 			defer mutex.Unlock()
-			log.Info().Int("number", i).Msg("multicacher hit")
+			log.Trace().Int("number", i).Msg("multicacher hit")
 			result = rc
 			cancel()
 			return nil
 		})
 	}
 	err := g.Wait()
-	log.Info().AnErr("errgroup", err).AnErr("resultErr", resultErr).Bool("result", result != nil).Msg("multicacher done")
 
 	if err != nil && !errors.Is(err, context.Canceled) {
-		log.Trace().Err(err).Msg("multicacher bailout")
 		return nil, err
 	}
 
 	if result == nil {
 		resultErr = fmt.Errorf("not found %s", name)
-		log.Trace().Err(resultErr).Msg("multicacher bailout2")
 	}
 	return result, resultErr
 }
 
 func (m *multicacher) Set(ctx context.Context, name string, content io.ReadSeeker) error {
-	// NOOP
-	return nil
+	if len(m.cachers) < 1 {
+		return fmt.Errorf("no cachers")
+	}
+	return m.cachers[0].Set(ctx, name, content)
 }

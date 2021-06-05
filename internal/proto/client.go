@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/goproxy/goproxy"
+	"github.com/rs/zerolog/log"
 )
 
 const apiBase = "Cacher"
@@ -46,7 +47,23 @@ func (r *remoter) Get(ctx context.Context, name string) (io.ReadCloser, error) {
 	const svcMethod = "Get"
 	resp := &RemoteResponse{}
 
+	log.Debug().Msg("Remoter go sync")
+	err := r.Client.Call(apiBase+"."+svcMethod, RemoteRequest{name}, resp)
+	if err != nil {
+		return nil, err
+	}
+	log.Debug().Int("len", len(resp.Body)).Msg("Remoter successs sync")
+	return &remoterReturn{
+		ReadCloser: io.NopCloser(bytes.NewBuffer(resp.Body)), // TODO on found defer pushing bytes by binding rpc to response object
+	}, nil
+}
+
+func (r *remoter) Get2(ctx context.Context, name string) (io.ReadCloser, error) {
+	const svcMethod = "Get"
+	resp := &RemoteResponse{}
+
 	var done chan *rpc.Call
+	log.Debug().Msg("Remoter go")
 	call := r.Client.Go(apiBase+"."+svcMethod, RemoteRequest{name}, resp, done)
 
 	select {
@@ -77,7 +94,6 @@ type RemoteResponse struct {
 	Body    []byte
 }
 type remoterReturn struct {
-	r RemoteResponse
 	io.ReadCloser
 }
 

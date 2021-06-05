@@ -15,9 +15,9 @@ import (
 )
 
 func main() {
-	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, os.Kill, syscall.SIGTERM)
 	defer cancel()
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
 	port := flag.Int("port", 8080, "listen on localhost port")
 	flag.Parse()
@@ -25,6 +25,11 @@ func main() {
 	i := service.Instance{
 		LocalPort: *port,
 	}
+
+	l := zerolog.Ctx(ctx)
+	l.UpdateContext(func(c zerolog.Context) zerolog.Context {
+		return c.Int("port", *port)
+	})
 
 	if err := i.Start(ctx); err != nil {
 		log.Fatal().Msgf("Service.Start: %v", err)
