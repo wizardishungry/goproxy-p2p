@@ -35,6 +35,7 @@ func (m *multicacher) Get(ctx context.Context, name string) (io.ReadCloser, erro
 		mutex     sync.Mutex
 		result    io.ReadCloser
 		resultErr error
+		resultIdx int = -1
 	)
 	for iI, cI := range m.cachers[1:] {
 		i, c := iI, cI // capture
@@ -43,6 +44,11 @@ func (m *multicacher) Get(ctx context.Context, name string) (io.ReadCloser, erro
 			rc, err := c.Get(ctx, name)
 			if err != nil || rc == nil {
 				log.Debug().Int("number", i).Err(err).Msg("multicacher miss")
+				if err != nil {
+					mutex.Lock()
+					defer mutex.Unlock()
+					resultErr = err
+				}
 				return nil
 			}
 
@@ -55,6 +61,7 @@ func (m *multicacher) Get(ctx context.Context, name string) (io.ReadCloser, erro
 			defer mutex.Unlock()
 			log.Trace().Int("number", i).Msg("multicacher hit")
 			result = rc
+			resultIdx = i
 			cancel()
 			return nil
 		})
@@ -67,6 +74,8 @@ func (m *multicacher) Get(ctx context.Context, name string) (io.ReadCloser, erro
 
 	if result == nil {
 		resultErr = fmt.Errorf("not found %s", name)
+	} else {
+		m.reshuffle(resultIdx)
 	}
 	return result, resultErr
 }
@@ -76,4 +85,14 @@ func (m *multicacher) Set(ctx context.Context, name string, content io.ReadSeeke
 		return fmt.Errorf("no cachers")
 	}
 	return m.cachers[0].Set(ctx, name, content)
+}
+
+// reshuffle moves the succeeding index to the second slot
+func (m *multicacher) reshuffle(idx int) {
+	if idx <= 0 || idx >= len(m.cachers) {
+		return
+	}
+
+	// naive
+	m.cachers[1], m.cachers[idx] = m.cachers[idx], m.cachers[1]
 }

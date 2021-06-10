@@ -3,9 +3,11 @@ package service
 import (
 	"context"
 	"fmt"
+	"net/url"
 
 	"github.com/rs/zerolog/log"
 	"golang.org/x/crypto/ssh"
+	"jonwillia.ms/goproxy-p2p/internal/agent"
 	"jonwillia.ms/goproxy-p2p/internal/localserver"
 	"jonwillia.ms/goproxy-p2p/internal/proto"
 	"jonwillia.ms/goproxy-p2p/internal/proxied"
@@ -14,11 +16,29 @@ import (
 	"jonwillia.ms/weyoun/pkg/handlers"
 )
 
+const (
+	serviceName = "_goproxyp2p._tcp" // must be in this format
+	username    = "goproxyp2p"
+)
+
 type Instance struct {
 	LocalPort int // port for the localserver
+	Password  string
 }
 
-const serviceName = "_goproxyp2p._tcp" // ust be in this format
+func (i *Instance) GetConfig() *agent.Config {
+	u := url.URL{
+		Scheme: "http",
+		Host:   fmt.Sprintf("%s:%d", "127.0.0.1", i.LocalPort),
+	}
+	v := url.Values{}
+	v.Add("pass", i.Password)
+	u.RawQuery = v.Encode()
+	return &agent.Config{
+		GOPROXY: u.String(),
+		// PID: ,
+	}
+}
 
 func (i *Instance) Start(ctx context.Context) (err error) {
 	ctx, cancel := context.WithCancel(ctx)
@@ -30,8 +50,8 @@ func (i *Instance) Start(ctx context.Context) (err error) {
 
 	px := proxied.New()
 
-	// this is an agent for the local user
-	localAddr, err := localserver.ListenAndServe(ctx, i.LocalPort, px.Updates())
+	// this is an proxy for the local user
+	localAddr, err := localserver.ListenAndServe(ctx, i.LocalPort, i.Password, px.Updates())
 	if err != nil {
 		return fmt.Errorf("localserver.ListenAndServe: %w", err)
 	}

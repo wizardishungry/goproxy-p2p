@@ -12,17 +12,20 @@ import (
 	"jonwillia.ms/goproxy-p2p/internal/util"
 )
 
+const connKey = "conn"
+
 // ListenAndServe returns a server that serves from the remoteServers
-func ListenAndServe(ctx context.Context, port int, remoteServers <-chan []goproxy.Cacher) (*net.TCPAddr, error) {
-	e := &ephemeral{}
+func ListenAndServe(ctx context.Context, port int, pass string, remoteServers <-chan []goproxy.Cacher) (*net.TCPAddr, error) {
+	e := &ephemeral{pass: pass}
 	e.setRemotes(nil)
 
 	server := http.Server{
-		Handler: e,
+		Handler:     e,
+		ConnContext: func(ctx context.Context, c net.Conn) context.Context { return context.WithValue(ctx, connKey, c) },
 	}
 	addr := &net.TCPAddr{
 		IP:   net.ParseIP("127.0.0.1"),
-		Port: port, // TODO alloc from command-line options
+		Port: port,
 	}
 	l, err := net.ListenTCP("tcp", addr)
 	if err != nil {
@@ -52,6 +55,7 @@ func ListenAndServe(ctx context.Context, port int, remoteServers <-chan []goprox
 type ephemeral struct {
 	mutex   sync.Mutex
 	goproxy *goproxy.Goproxy
+	pass    string
 }
 
 var _ http.Handler = &ephemeral{}
@@ -82,8 +86,13 @@ func (e *ephemeral) getProxy() *goproxy.Goproxy {
 }
 
 func (e *ephemeral) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
-	// TODO add auth so other local users can't hit your proxy
 	p := e.getProxy()
+	pass := req.URL.Query().Get("pass")
+	if pass != e.pass {
+		resp.WriteHeader(http.StatusForbidden)
+		return
+	}
+	req.URL.Query().Del("pass")
 	log.Trace().Bool("resp", resp == nil).Msg("serve http")
 	p.ServeHTTP(resp, req)
 }
