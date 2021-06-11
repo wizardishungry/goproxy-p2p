@@ -56,11 +56,7 @@ func connectOrListen(ctx context.Context, path string, mustConnect bool) (agent 
 	if errors.As(err, &errno) {
 		switch errno {
 		case syscall.ECONNREFUSED:
-			err = os.Remove(path)
-			if err != nil {
-				err = fmt.Errorf("os.Remove: %w", err)
-				return
-			}
+			_ = os.Remove(path)
 			fallthrough
 		case syscall.ENOENT:
 			agent, err = listen(ctx, path)
@@ -96,6 +92,7 @@ func listen(ctx context.Context, path string) (*Agent, error) {
 			cn, err := ln.AcceptUnix()
 			if err != nil {
 				log.Trace().Err(err).Msgf("domain socket agent exiting")
+				continue
 			}
 			go func() {
 				defer cn.Close()

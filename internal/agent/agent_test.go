@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 )
@@ -32,5 +31,4 @@ func TestConnect(t *testing.T) {
 	if config == nil {
 		t.Error("connectOrListen returned nil config")
 	}
-	fmt.Println(config)
 }

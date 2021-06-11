@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
 	"syscall"
 	"time"
@@ -34,40 +36,71 @@ func main() {
 	pass := flag.String("password", "", "password for local service")
 	serve := flag.Bool("serve", true, "serve your local go cache to other users with your ssh keys")
 	eval := flag.Bool("eval", false, "shell eval")
+	// TODO add -kill & -restart & -daemon
 	flag.Parse()
 
-	if *eval {
-		args := os.Args
+	var (
+		myAgent  *agent.Agent
+		myConfig *agent.Config
+		err      error
+	)
 
-		proc, err := os.StartProcess(args[0], args[1:], &os.ProcAttr{
-			Dir:   ".",
-			Env:   os.Environ(),
-			Files: []*os.File{os.Stdin, os.Stdout, os.Stderr},
-			Sys:   &syscall.SysProcAttr{Setpgid: true, Pgid: 0, Noctty: true},
-		})
-		if err != nil {
-			log.Fatal().Err(err).Msgf("Can't detach")
+	if *eval {
+		myAgent, myConfig, err = agent.ConnectOrNew(ctx, true)
+		if err == nil {
+			goto EXISTING_DAEMON
 		}
-		if err := proc.Release(); err != nil {
+		args := make([]string, 0, len(os.Args[1:]))
+		oldArgs := os.Args[1:]
+		for i := 0; i < len(oldArgs); i++ {
+			if oldArgs[i] == "-eval" {
+				continue
+			}
+			args = append(args, oldArgs[i])
+		}
+		// TODO: add daemon flag
+		fmt.Println(args)
+		// args = []string{"sleep", "60"}
+		fmt.Println(args)
+
+		cmd := exec.Command(os.Args[0], args...)
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stdout // TODO attach to log in child
+		cmd.SysProcAttr = &syscall.SysProcAttr{
+			// Setpgid: true,
+			// Pgid:    0,
+			Setsid: true,
+			// Noctty: true,
+		}
+		// TODO: pass log fds?
+
+		err := cmd.Start()
+		if err != nil {
+			log.Fatal().Err(err).Msgf("Can't start detached process")
+		}
+		if err := cmd.Process.Release(); err != nil {
 			log.Fatal().Err(err).Msgf("Can't release")
 		}
 		time.Sleep(time.Second) // TODO retry instead
 	}
 
-	a, c, err := agent.ConnectOrNew(ctx, *eval)
+	myAgent, myConfig, err = agent.ConnectOrNew(ctx, *eval) // TODO: eval should only connect
 	if err != nil {
+		fmt.Println(err)
 		log.Fatal().Msgf("agent.ConnectOrNew: %v", err)
 	}
-	if c != nil {
+EXISTING_DAEMON:
+	if myConfig != nil {
 		if *eval {
-			c.ShellEval()
+			myConfig.ShellEval()
 		} else {
-			log.Info().Str("GOPROXY", c.GOPROXY).Msgf("config received")
+			log.Info().Str("GOPROXY", myConfig.GOPROXY).Msgf("config received")
 		}
 		return
 	}
 
-	if a == nil {
+	if myAgent == nil {
 		log.Fatal().Msgf("no running agent")
 	}
 
@@ -81,8 +114,10 @@ func main() {
 		Serve:     *serve,
 	}
 
-	c = i.GetConfig()
-	a.SetConfig(c)
+	myConfig = i.GetConfig()
+	myAgent.SetConfig(myConfig)
+	fmt.Println(os.Args)
+	log.Info().Str("pass", *pass).Msgf("deee")
 
 	l := zerolog.Ctx(ctx)
 	l.UpdateContext(func(c zerolog.Context) zerolog.Context {
@@ -94,7 +129,7 @@ func main() {
 	}
 
 	if *eval {
-		c.ShellEval()
+		myConfig.ShellEval()
 	}
 
 	<-ctx.Done()
