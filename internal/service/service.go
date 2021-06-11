@@ -82,6 +82,9 @@ func (i *Instance) Start(ctx context.Context) (err error) {
 			return fmt.Errorf("ws.Run: %w", err)
 		}
 		myServerID = ws.GetID()
+		log.Info().Msgf("announcing self to network %v", ws.GetID())
+	} else {
+		log.Info().Msg("not announcing to network")
 	}
 
 	wc := weyoun.NewClient(serviceName, px.CallbackAdd(), px.CallbackRemove(), []string{

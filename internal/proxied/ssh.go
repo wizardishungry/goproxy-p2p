@@ -43,7 +43,7 @@ func (p *Proxied) CallbackAdd() func(ctx context.Context, sshClient *ssh.Client)
 		}
 		go ssh.DiscardRequests(reqs)
 
-		var rpc closeCacher = proto.New(channel)
+		var rpc closeCacher = proto.New(channel, sshClient.RemoteAddr())
 
 		p.Mutex.Lock()
 		defer p.Mutex.Unlock()

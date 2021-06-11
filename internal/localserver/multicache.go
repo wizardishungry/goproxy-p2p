@@ -59,7 +59,13 @@ func (m *multicacher) Get(ctx context.Context, name string) (io.ReadCloser, erro
 			}
 			mutex.Lock()
 			defer mutex.Unlock()
-			log.Trace().Int("number", i).Msg("multicacher hit")
+			var cacherName string
+			if s, ok := m.cachers[i].(fmt.Stringer); ok {
+				cacherName = s.String()
+			} else {
+				cacherName = fmt.Sprintf("%T", m.cachers[i])
+			}
+			log.Trace().Str("name", cacherName).Int("number", i).Msg("multicacher hit")
 			result = rc
 			resultIdx = i
 			cancel()

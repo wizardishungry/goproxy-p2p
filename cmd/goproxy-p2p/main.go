@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -53,15 +54,12 @@ func main() {
 		args := make([]string, 0, len(os.Args[1:]))
 		oldArgs := os.Args[1:]
 		for i := 0; i < len(oldArgs); i++ {
-			if oldArgs[i] == "-eval" {
+			if strings.HasPrefix(oldArgs[i], "-eval") {
 				continue
 			}
 			args = append(args, oldArgs[i])
 		}
-		// TODO: add daemon flag
-		fmt.Println(args)
-		// args = []string{"sleep", "60"}
-		fmt.Println(args)
+		args = append(args, "-eval=false")
 
 		cmd := exec.Command(os.Args[0], args...)
 		cmd.Stdin = os.Stdin
@@ -116,7 +114,7 @@ EXISTING_DAEMON:
 
 	myConfig = i.GetConfig()
 	myAgent.SetConfig(myConfig)
-	fmt.Println(os.Args)
+
 	log.Info().Str("pass", *pass).Msgf("deee")
 
 	l := zerolog.Ctx(ctx)

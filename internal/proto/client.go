@@ -16,12 +16,14 @@ const apiBase = "Cacher"
 
 var APIBase = apiBase
 
-func New(conn io.ReadWriteCloser) interface {
+func New(conn io.ReadWriteCloser, stringer fmt.Stringer) interface {
 	goproxy.Cacher
 	Close() error
 } {
 	rpcClient := rpc.NewClient(conn)
-	return &remoter{rpcClient}
+	return &remoter{
+		Client: rpcClient,
+	}
 }
 
 // Get gets the matched cache for the name. It returns the
@@ -39,23 +41,18 @@ func New(conn io.ReadWriteCloser) interface {
 //   * `interface{ Checksum() []byte }`
 //       For the ETag response header.
 
-type remoter struct{ *rpc.Client }
+type remoter struct {
+	*rpc.Client
+	stringer fmt.Stringer
+}
 
-var _ goproxy.Cacher = &remoter{}
+var (
+	_ goproxy.Cacher = &remoter{}
+	_ fmt.Stringer   = &remoter{}
+)
 
-func (r *remoter) Get1(ctx context.Context, name string) (io.ReadCloser, error) {
-	const svcMethod = "Get"
-	resp := &RemoteResponse{}
-
-	log.Debug().Msg("Remoter go sync")
-	err := r.Client.Call(apiBase+"."+svcMethod, RemoteRequest{name}, resp)
-	if err != nil {
-		return nil, err
-	}
-	log.Debug().Int("len", len(resp.Body)).Msg("Remoter successs sync")
-	return &remoterReturn{
-		ReadCloser: io.NopCloser(bytes.NewBuffer(resp.Body)), // TODO on found defer pushing bytes by binding rpc to response object
-	}, nil
+func (r *remoter) String() string {
+	return r.stringer.String()
 }
 
 func (r *remoter) Get(ctx context.Context, name string) (io.ReadCloser, error) {
