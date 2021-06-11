@@ -22,7 +22,8 @@ func New(conn io.ReadWriteCloser, stringer fmt.Stringer) interface {
 } {
 	rpcClient := rpc.NewClient(conn)
 	return &remoter{
-		Client: rpcClient,
+		Client:   rpcClient,
+		stringer: stringer,
 	}
 }
 
