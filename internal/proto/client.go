@@ -43,7 +43,7 @@ type remoter struct{ *rpc.Client }
 
 var _ goproxy.Cacher = &remoter{}
 
-func (r *remoter) Get(ctx context.Context, name string) (io.ReadCloser, error) {
+func (r *remoter) Get1(ctx context.Context, name string) (io.ReadCloser, error) {
 	const svcMethod = "Get"
 	resp := &RemoteResponse{}
 
@@ -58,18 +58,17 @@ func (r *remoter) Get(ctx context.Context, name string) (io.ReadCloser, error) {
 	}, nil
 }
 
-func (r *remoter) Get2(ctx context.Context, name string) (io.ReadCloser, error) {
+func (r *remoter) Get(ctx context.Context, name string) (io.ReadCloser, error) {
 	const svcMethod = "Get"
 	resp := &RemoteResponse{}
 
-	var done chan *rpc.Call
 	log.Debug().Msg("Remoter go")
-	call := r.Client.Go(apiBase+"."+svcMethod, RemoteRequest{name}, resp, done)
+	call := r.Client.Go(apiBase+"."+svcMethod, RemoteRequest{name}, resp, nil)
 
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	case <-done:
+	case <-call.Done:
 	}
 
 	if err := call.Error; err != nil {

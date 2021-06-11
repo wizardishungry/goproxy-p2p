@@ -37,7 +37,7 @@ func (m *multicacher) Get(ctx context.Context, name string) (io.ReadCloser, erro
 		resultErr error
 		resultIdx int = -1
 	)
-	for iI, cI := range m.cachers[1:] {
+	for iI, cI := range m.cachers {
 		i, c := iI, cI // capture
 		g.Go(func() error {
 			log.Trace().Int("number", i).Msg("multicacher req")
@@ -73,8 +73,9 @@ func (m *multicacher) Get(ctx context.Context, name string) (io.ReadCloser, erro
 	}
 
 	if result == nil {
-		resultErr = fmt.Errorf("not found %s", name)
+		resultErr = fmt.Errorf("not found %s: %w", name, resultErr)
 	} else {
+		resultErr = nil
 		m.reshuffle(resultIdx)
 	}
 	return result, resultErr

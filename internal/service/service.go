@@ -22,6 +22,7 @@ const (
 )
 
 type Instance struct {
+	Serve     bool
 	LocalPort int // port for the localserver
 	Password  string
 }
@@ -56,29 +57,36 @@ func (i *Instance) Start(ctx context.Context) (err error) {
 		return fmt.Errorf("localserver.ListenAndServe: %w", err)
 	}
 	log.Info().Msgf("local server %v", localAddr)
-
 	i.LocalPort = localAddr.Port // in case we pass 0
-	myCacher := util.Gomodcacher()
-	ws := weyoun.NewServer(serviceName, handlers.Handlers{
-		FreeForm: map[string]func(ctx context.Context, channel ssh.Channel, extra []byte){
-			"cacher": func(ctx context.Context, channel ssh.Channel, extra []byte) { // TODO const
-				s, err := proto.NewServer(ctx, myCacher)
-				if err != nil {
-					log.Error().Err(err).Msg("proto.NewServer")
-					return
-				}
-				log.Info().Msg("Serving connection")
-				s.ServeConn(channel)
-			},
-		},
-	})
 
-	err = ws.Run(ctx)
-	if err != nil {
-		return fmt.Errorf("ws.Run: %w", err)
+	myServerID := ""
+	_ = myServerID
+	if i.Serve {
+		myCacher := util.Gomodcacher()
+		ws := weyoun.NewServer(serviceName, handlers.Handlers{
+			FreeForm: map[string]func(ctx context.Context, channel ssh.Channel, extra []byte){
+				"cacher": func(ctx context.Context, channel ssh.Channel, extra []byte) { // TODO const
+					s, err := proto.NewServer(ctx, myCacher)
+					if err != nil {
+						log.Error().Err(err).Msg("proto.NewServer")
+						return
+					}
+					log.Info().Msg("Serving connection")
+					s.ServeConn(channel)
+				},
+			},
+		})
+
+		err = ws.Run(ctx)
+		if err != nil {
+			return fmt.Errorf("ws.Run: %w", err)
+		}
+		myServerID = ws.GetID()
 	}
 
-	wc := weyoun.NewClient(serviceName, px.CallbackAdd(), px.CallbackRemove())
+	wc := weyoun.NewClient(serviceName, px.CallbackAdd(), px.CallbackRemove(), []string{
+		myServerID, // TODO make matching localhost configurable
+	})
 	err = wc.Run(ctx)
 	if err != nil {
 		return fmt.Errorf("wc.Run: %w", err)

@@ -22,7 +22,7 @@ func TestConnect(t *testing.T) {
 
 	time.Sleep(time.Second)
 
-	agent, config, err := connectOrListen(ctx, path)
+	agent, config, err := connectOrListen(ctx, path, false)
 	if err != nil {
 		t.Errorf("connectOrListen returned an error %v", err)
 	}

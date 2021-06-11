@@ -49,7 +49,7 @@ func ListenAndServe(ctx context.Context, port int, pass string, remoteServers <-
 			}
 		}
 	}()
-	return addr, nil
+	return l.Addr().(*net.TCPAddr), nil
 }
 
 type ephemeral struct {

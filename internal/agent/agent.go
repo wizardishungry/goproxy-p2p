@@ -28,19 +28,30 @@ type Config struct {
 	PID     int
 }
 
+func (c *Config) ShellEval() {
+	if c == nil || c.GOPROXY == "" {
+		fmt.Println("echo problem setting up GOPROXY")
+		return
+	}
+	fmt.Printf("export GOPROXY=%s\n", c.GOPROXY)
+}
+
 // ConnectOrNew returns a connection to the domain socket
-func ConnectOrNew(ctx context.Context) (agent *Agent, existing *Config, err error) {
+func ConnectOrNew(ctx context.Context, mustConnect bool) (agent *Agent, existing *Config, err error) {
 	path, err := os.UserConfigDir()
 	if err != nil {
 		err = fmt.Errorf("os.UserConfigDir: %w", err)
 		return
 	}
 	path += "/goproxy-p2p.sock"
-	return connectOrListen(ctx, path)
+	return connectOrListen(ctx, path, mustConnect)
 }
 
-func connectOrListen(ctx context.Context, path string) (agent *Agent, existing *Config, err error) {
+func connectOrListen(ctx context.Context, path string, mustConnect bool) (agent *Agent, existing *Config, err error) {
 	existing, err = connect(ctx, path)
+	if err != nil && mustConnect {
+		return
+	}
 	var errno syscall.Errno
 	if errors.As(err, &errno) {
 		switch errno {
