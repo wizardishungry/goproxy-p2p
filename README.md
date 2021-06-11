@@ -6,6 +6,11 @@
 No. It does not work offline.
 
 
+## Security concerns
+
+1. I don't want to leak git repos from my work PC to my home computer
+   Run with `-serve=false`
+
 ## Testing
 Here's how to test how fast this is
 ```
