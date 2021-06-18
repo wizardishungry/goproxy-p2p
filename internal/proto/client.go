@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/goproxy/goproxy"
-	"github.com/rs/zerolog/log"
 )
 
 const apiBase = "Cacher"
@@ -60,7 +59,6 @@ func (r *remoter) Get(ctx context.Context, name string) (io.ReadCloser, error) {
 	const svcMethod = "Get"
 	resp := &RemoteResponse{}
 
-	log.Debug().Msg("Remoter go")
 	call := r.Client.Go(apiBase+"."+svcMethod, RemoteRequest{name}, resp, nil)
 
 	select {

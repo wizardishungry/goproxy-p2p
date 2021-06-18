@@ -29,7 +29,7 @@ func main() {
 	defer cancel()
 	{
 		l := zerolog.ConsoleWriter{Out: os.Stderr}
-		l.TimeFormat = time.ANSIC
+		l.TimeFormat = time.StampMilli
 		log.Logger = log.Output(l)
 	}
 
@@ -114,8 +114,6 @@ EXISTING_DAEMON:
 
 	myConfig = i.GetConfig()
 	myAgent.SetConfig(myConfig)
-
-	log.Info().Str("pass", *pass).Msgf("deee")
 
 	l := zerolog.Ctx(ctx)
 	l.UpdateContext(func(c zerolog.Context) zerolog.Context {

@@ -43,8 +43,8 @@ func (m *multicacher) Get(ctx context.Context, name string) (io.ReadCloser, erro
 			log.Trace().Int("number", i).Msg("multicacher req")
 			rc, err := c.Get(ctx, name)
 			if err != nil || rc == nil {
-				log.Debug().Int("number", i).Err(err).Msg("multicacher miss")
-				if err != nil {
+				if err != nil && errors.Is(err, context.Canceled) {
+					log.Debug().Int("number", i).Err(err).Msg("multicacher miss")
 					mutex.Lock()
 					defer mutex.Unlock()
 					resultErr = err
