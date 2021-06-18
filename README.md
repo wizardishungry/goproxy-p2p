@@ -17,25 +17,23 @@ instances and serves the Go module from the first replying instance.
 1. Is this an offline proxy?
 No. It does not work offline.
 
-## Security concerns
-
-1. I don't want to leak git repos from my work PC to my home computer
+2. I don't want to leak git repos from my work PC to my home computer
    Run with `-serve=false`. This disables the caching server from exporting across the network, but enables the agent to connect to serving
    instances.
 
 ## Testing
 
-Here's how to run it in dev; add to bashrc etc:
+To run it in dev; add to `.bashrc`, `.zshrc`, etc:
 ```sh
 $(cd ~/Projects/goproxy-p2p && go run ./cmd/goproxy-p2p/... -port 8080 -password ok -eval true)
 ```
 
-Here's how to test how fast this is
+To test performance:
+
 ```sh
 sudo rm -rf /tmp/goscratch
 GOPROXY=http://localhost:8080?pass=ok GOMODCACHE=/tmp/goscratch go get github.com/moby/moby
 ```
-
 
 ## Known Issues
 
