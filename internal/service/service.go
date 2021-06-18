@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/crypto/ssh"
 	"jonwillia.ms/goproxy-p2p/internal/agent"
@@ -82,9 +83,17 @@ func (i *Instance) Start(ctx context.Context) (err error) {
 			return fmt.Errorf("ws.Run: %w", err)
 		}
 		myServerID = ws.GetID()
-		log.Info().Msgf("announcing self to network %v", ws.GetID())
-	} else {
-		log.Info().Msg("not announcing to network")
+		keys, err := ws.GetAuthorizedKeys()
+		if err != nil {
+			log.Error().Err(err).Msg("GetAuthorizedKeys")
+		}
+
+		for _, key := range keys {
+			logKeys(key).
+				Msg("accepting")
+		}
+		log.Info().Str("id", ws.GetID()).
+			Msg("announcing caching service to to network")
 	}
 
 	wc := weyoun.NewClient(serviceName, px.CallbackAdd(), px.CallbackRemove(), []string{
@@ -95,5 +104,23 @@ func (i *Instance) Start(ctx context.Context) (err error) {
 		return fmt.Errorf("wc.Run: %w", err)
 	}
 
+	keys, err := wc.ListPublic()
+	if err != nil {
+		log.Error().Err(err).Msg("ListPublic")
+	}
+	for _, key := range keys {
+		logKeys(key).
+			Msg("identity available")
+	}
+
 	return nil
+}
+
+func logKeys(key ssh.PublicKey) *zerolog.Event {
+	keyStr := string(ssh.MarshalAuthorizedKey(key))
+	fp := ssh.FingerprintLegacyMD5(key)
+	keyStr = keyStr[:len(keyStr)-1]
+	return log.Debug().
+		Str("authorized_key", keyStr).
+		Str("fingerprint", fp)
 }
